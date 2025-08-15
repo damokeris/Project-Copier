@@ -1,156 +1,132 @@
 @echo off
-setlocal enabledelayedexpansion
-:: 使用UTF-8代码页，以防项目名或路径包含非英文字符
+setlocal DISABLEDELAYEDEXPANSION  ; 关键修改：禁用延迟扩展
 chcp 65001 >nul
-title Java Source Code Copier
+title Java-Code-Copier
 
-:: ========================= 配置区域 =========================
-:: 1. 你的IdeaProjects目录的根路径
-set "PROJECTS_ROOT=%USERPROFILE%\IdeaProjects"
-
-:: 2. 拷贝代码的目标根目录
+:: ===================== CONFIGURATION =====================
+set "PROJECTS_ROOT=%USERPROFILE%\VSCodeProjects"
 set "DOC_ROOT=%USERPROFILE%\Documents\CODE"
-:: ==========================================================
+:: ========================================================
 
-
-:: --- 1. 查找并显示可用的项目 ---
+:: --- 1. Scan projects ---
 cls
 echo.
-echo =============================================================
-echo      Java Source Code Copier (Interactive Mode)
-echo =============================================================
+echo ======================================================
+echo        Java Source Code Copier (Interactive)
+echo ======================================================
 echo.
 
 if not exist "%PROJECTS_ROOT%" (
-    echo [错误] 未找到IdeaProjects目录: %PROJECTS_ROOT%
+    echo [ERROR] Directory not found: %PROJECTS_ROOT%
     echo.
-    echo 请检查脚本中的 "PROJECTS_ROOT" 配置是否正确。
     pause
     goto :eof
 )
 
-echo [信息] 正在扫描 "%PROJECTS_ROOT%" 下的项目...
+echo [INFO] Scanning "%PROJECTS_ROOT%"...
 echo.
-set "project_count=0"
+set project_count=0
 for /d %%P in ("%PROJECTS_ROOT%\*") do (
     set /a project_count+=1
-    set "project[!project_count!]=%%~nxP"
+    call set "project_%%project_count%%=%%~nxP"
     echo   !project_count!. %%~nxP
 )
 
 if %project_count% equ 0 (
-    echo [警告] 在 "%PROJECTS_ROOT%" 目录中没有找到任何项目文件夹。
+    echo [WARN] No projects found in "%PROJECTS_ROOT%"
     pause
     goto :eof
 )
-echo.
-echo -------------------------------------------------------------
+echo ------------------------------------------------------
 
-
-:: --- 2. 获取并验证用户输入 ---
+:: --- 2. User input ---
 :get_choice
 echo.
-set "choice="
-set /p "choice=请输入你想要拷贝的项目的编号: "
+set /p "choice=Enter project number: "
 
-:: ==== vvvvvvvvvvvvvvvvvvvvvv 修改后的验证逻辑 vvvvvvvvvvvvvvvvvvvvvv ====
-if not defined choice goto :invalid_choice
+if "%choice%"=="" goto invalid
+echo %choice%|findstr /r "^[0-9][0-9]*$" >nul || goto invalid
+if %choice% LSS 1 goto invalid
+if %choice% GTR %project_count% goto invalid
+goto valid_choice
 
-:: 使用 set /a 验证输入是否为纯数字
-set /a "check_num=choice" >nul 2>nul
-
-:: 如果输入 "abc", check_num 会变成 0. 如果输入 "5a", check_num 会变成 5.
-:: 所以，我们比较转换后的数字和原始输入字符串是否一致。
-:: 并且，我们确保数字大于0。
-if "%check_num%"=="" goto :invalid_choice
-if "%check_num%"=="0" goto :invalid_choice
-if not "%check_num%"=="%choice%" goto :invalid_choice
-
-:: 验证数字是否在有效范围内
-if %check_num% gtr %project_count% goto :invalid_choice
-
-:: 如果所有验证都通过，将 check_num 赋值给 choice
-set "choice=%check_num%"
-goto :valid_choice
-:: ==== ^^^^^^^^^^^^^^^^^^^^^^ 修改后的验证逻辑 ^^^^^^^^^^^^^^^^^^^^^^ ====
-
-:invalid_choice
-echo.
-echo [错误] 输入无效，请输入列表中一个有效的数字。
+:invalid
+echo [ERROR] Invalid input. Please enter a number between 1 and %project_count%
 goto get_choice
 
-
-:: --- 3. 确定源路径和目标路径 ---
+:: --- 3. Path setup ---
 :valid_choice
-set "PROJECT_NAME=!project[%choice%]!"
+call set "PROJECT_NAME=%%project_%choice%%%"
 
-:: 智能探测源代码路径：优先使用 src/main/java，否则使用项目根目录
-set "SOURCE_PATH=%PROJECTS_ROOT%\!PROJECT_NAME!\src\main\java"
-if not exist "!SOURCE_PATH!\" (
-    echo [信息] 未找到 "!PROJECT_NAME!\src\main\java"，将从项目根目录拷贝。
-    set "SOURCE_PATH=%PROJECTS_ROOT%\!PROJECT_NAME!"
+set "SOURCE_PATH=%PROJECTS_ROOT%\%PROJECT_NAME%\src\main\java"
+if not exist "%SOURCE_PATH%\" (
+    echo [INFO] Using project root: %PROJECT_NAME%
+    set "SOURCE_PATH=%PROJECTS_ROOT%\%PROJECT_NAME%"
 )
 
-:: 构建完整的目标路径
 set "DEST=%DOC_ROOT%\%PROJECT_NAME%"
 
-
-:: --- 4. 执行拷贝操作 ---
-:: ... 后续代码与之前完全相同，无需修改 ...
+:: --- 4. Copy operation (FIXED) ---
 cls
 echo.
-echo [信息] 正在扁平化复制Java项目文件...
-echo   项目名称: %PROJECT_NAME%
-echo   源目录:   %SOURCE_PATH%
-echo   目标目录: %DEST%
+echo [INFO] Copying Java files...
+echo   Project: %PROJECT_NAME%
+echo   Source:  %SOURCE_PATH%
+echo   Target:  %DEST%
 echo.
 
-if not exist "%DEST%" (
-    echo [操作] 正在创建目标目录: %DEST%
-    mkdir "%DEST%" >nul 2>&1
-)
+if not exist "%DEST%" mkdir "%DEST%" >nul 2>&1
 
 set file_count=0
 set conflict_count=0
 
-echo [操作] 正在收集并仅复制 .java 文件...
 for /R "%SOURCE_PATH%" %%F in (*.java) do (
     set /a file_count += 1
-    set "filename=%%~nxF"
-    set "dest_file=%DEST%\!filename!"
+    set "source_file=%%F"
+    set "dest_file=%DEST%\%%~nxF"
     
+    setlocal ENABLEDELAYEDEXPANSION
     if exist "!dest_file!" (
         set /a conflict_count += 1
-        set "counter=1"
-        :retry
-        set "new_name=%%~nF_!counter!%%~xF"
-        set "dest_file=%DEST%\!new_name!"
-        if exist "!dest_file!" (
-            set /a counter += 1
-            goto :retry
-        )
-        copy "%%F" "!dest_file!" >nul
-        echo   [重命名] %%~nxF -> !new_name!
+        set counter=1
+        call :resolve_conflict "!source_file!" "!dest_file!"
     ) else (
-        copy "%%F" "!dest_file!" >nul
-        echo   [复制] %%~nxF
+        copy "!source_file!" "!dest_file!" >nul
+        echo   [COPY] %%~nxF
     )
+    endlocal
 )
 
-
-:: --- 5. 显示结果摘要 ---
+:: --- 5. Results ---
 echo.
-echo ====================== 操 作 完 成 ======================
+echo ====================== SUMMARY =======================
 if %file_count% equ 0 (
-    echo   在指定源目录中未找到任何 .java 文件。
+    echo   No .java files found
 ) else (
-    echo   处理 .java 文件总数: %file_count%
-    echo   因重名而重命名文件数: %conflict_count%
-    echo   所有文件已复制到:
-    echo   %DEST%
+    echo   Total files:    %file_count%
+    echo   Renamed files:  %conflict_count%
+    echo   Output folder:  %DEST%
 )
-echo =========================================================
+echo =====================================================
 echo.
-
 pause
-endlocal
+exit /b
+
+:: --- Subroutine for conflict resolution ---
+:resolve_conflict
+set "src=%~1"
+set "dst=%~2"
+set counter=1
+
+:retry
+set "new_name=%~n1_%counter%%~x1"
+set "new_dest=%DEST%\%new_name%"
+
+if exist "%new_dest%" (
+    set /a counter += 1
+    goto :retry
+)
+
+copy "%src%" "%new_dest%" >nul
+echo   [RENAME] %~nx1 --^> %new_name%
+exit /b
