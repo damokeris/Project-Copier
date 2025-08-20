@@ -36,7 +36,7 @@
                         </executions>
                         <configuration>
                             <!-- 主类 -->
-                            <mainClass>com.yourcompany.copier.SmartJavaCopier</mainClass>
+                            <mainClass>com.example.copier.SmartJavaCopier</mainClass>
                             <!-- 生成的可执行文件名 -->
                             <imageName>SmartJavaCopier</imageName>
                             <buildArgs>
