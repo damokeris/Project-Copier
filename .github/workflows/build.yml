@@ -1,8 +1,9 @@
-name: Build Cross-Platform Java Copier
+name: Build and Release Cross-Platform Java Copier
 
 on:
   push:
     branches: [ "main", "master" ]
+    tags: [ 'v*' ]  # 添加tags触发，例如v1.0.0
   workflow_dispatch:
 
 jobs:
@@ -26,7 +27,7 @@ jobs:
       - name: Build native executable with Maven
         run: mvn -Pnative package
 
-      # === 上传构建产物 (修正部分) ===
+      # 上传构建产物
       - name: Upload Windows Artifact
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
@@ -47,3 +48,68 @@ jobs:
         with:
           name: SmartJavaCopier-macOS
           path: target/SmartJavaCopier
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: build  # 依赖于build job完成
+    if: startsWith(github.ref, 'refs/tags/')  # 只在打tag时运行
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts  # 下载到artifacts目录
+
+      - name: Extract Version from Tag
+        id: get_version
+        run: |
+          # 从GITHUB_REF提取tag名（例如refs/tags/v1.0.0 -> v1.0.0）
+          tag_name="${GITHUB_REF#refs/tags/}"
+          # 去除v前缀（如果存在），得到纯版本号（例如1.0.0）
+          version="${tag_name#v}"
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag_name }}  # 使用原始tag名，如v1.0.0
+          release_name: SmartJavaCopier ${{ steps.get_version.outputs.version }}  # release名，如SmartJavaCopier 1.0.0
+          body: |  # release描述，可以根据需要自定义
+            Automatic release for version ${{ steps.get_version.outputs.version }}.
+            Built for Windows, Linux, and macOS using GraalVM native image.
+          draft: false
+          prerelease: false
+
+      - name: Upload Windows Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/SmartJavaCopier-Windows/SmartJavaCopier.exe
+          asset_name: SmartJavaCopier-${{ steps.get_version.outputs.version }}-windows.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload Linux Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/SmartJavaCopier-Linux/SmartJavaCopier
+          asset_name: SmartJavaCopier-${{ steps.get_version.outputs.version }}-linux
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: artifacts/SmartJavaCopier-macOS/SmartJavaCopier
+          asset_name: SmartJavaCopier-${{ steps.get_version.outputs.version }}-macos
+          asset_content_type: application/octet-stream
