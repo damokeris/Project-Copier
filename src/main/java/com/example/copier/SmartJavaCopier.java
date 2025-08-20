@@ -32,7 +32,8 @@ public class SmartJavaCopier {
     // 5. Directories to exclude from scanning (to avoid permission issues)
     private static final List<String> EXCLUDED_DIRECTORIES = Arrays.asList(
         "AppData", "Application Data", "Local Settings", "Windows", "Program Files",
-        "Program Files (x86)", "ProgramData", "System Volume Information", "$Recycle.Bin"
+        "Program Files (x86)", "ProgramData", "System Volume Information", "$Recycle.Bin",
+        "System32", "SysWOW64", "Jira", "Anaconda3", "node_modules"  // Added more common directories
     );
     // ==========================================================
 
@@ -87,9 +88,9 @@ public class SmartJavaCopier {
             return;
         }
         
-        // Skip excluded directories
+        // Skip excluded directories and target directory DOC_ROOT
         String dirName = directory.getFileName().toString();
-        if (EXCLUDED_DIRECTORIES.contains(dirName)) {
+        if (isExcludedDirectory(dirName) || directory.startsWith(DOC_ROOT)) {
             return;
         }
 
@@ -109,6 +110,20 @@ public class SmartJavaCopier {
         } catch (IOException e) {
             System.err.println("[Warning] Error accessing directory: " + directory + " - " + e.getMessage());
         }
+    }
+
+    private static boolean isExcludedDirectory(String dirName) {
+        // Check against excluded list with case-insensitive comparison
+        for (String excluded : EXCLUDED_DIRECTORIES) {
+            if (excluded.equalsIgnoreCase(dirName)) {
+                return true;
+            }
+        }
+        // Exclude hidden directories (starting with dot)
+        if (dirName.startsWith(".")) {
+            return true;
+        }
+        return false;
     }
 
     private static boolean isJavaProject(Path directory) {
@@ -220,10 +235,61 @@ public class SmartJavaCopier {
         System.out.println("  Target Directory: " + destDir);
         System.out.println();
 
+        // 使用数组包装destDir，使其可以在lambda中使用
+        final Path[] finalDestDir = {destDir};
+        final String[] finalProjectName = {projectName};
+
+        // Check if target directory already exists
+        if (Files.exists(finalDestDir[0])) {
+            System.out.println("目标目录已存在: " + finalDestDir[0]);
+            System.out.println("请选择操作:");
+            System.out.println("  1. 覆盖 - 删除现有目录并复制");
+            System.out.println("  2. 跳过 - 不复制");
+            System.out.println("  3. 重命名 - 指定新名称");
+
+            Scanner scanner = new Scanner(System.in);
+            String input = scanner.nextLine();
+            int choice;
+            try {
+                choice = Integer.parseInt(input);
+            } catch (NumberFormatException e) {
+                choice = 0; // invalid
+            }
+
+            switch (choice) {
+                case 1: // Overwrite
+                    try {
+                        deleteDirectory(finalDestDir[0]);
+                        System.out.println("[Operation] 已删除现有目录: " + finalDestDir[0]);
+                    } catch (IOException e) {
+                        System.err.println("[Error] 无法删除目录: " + e.getMessage());
+                        return;
+                    }
+                    break;
+                case 2: // Skip
+                    System.out.println("[Info] 跳过复制。");
+                    return;
+                case 3: // Rename
+                    System.out.print("请输入新项目名称: ");
+                    String newName = scanner.nextLine().trim();
+                    if (newName.isEmpty()) {
+                        System.out.println("[Warning] 名称无效，使用默认重命名。");
+                        newName = projectName + "_copy";
+                    }
+                    finalDestDir[0] = DOC_ROOT.resolve(newName);
+                    finalProjectName[0] = newName;
+                    System.out.println("[Info] 新目标目录: " + finalDestDir[0]);
+                    break;
+                default:
+                    System.out.println("[Warning] 无效选择，默认跳过。");
+                    return;
+            }
+        }
+
         try {
-            if (!Files.exists(destDir)) {
-                System.out.println("[Operation] Creating target directory: " + destDir);
-                Files.createDirectories(destDir);
+            if (!Files.exists(finalDestDir[0])) {
+                System.out.println("[Operation] Creating target directory: " + finalDestDir[0]);
+                Files.createDirectories(finalDestDir[0]);
             }
 
             final int[] fileCount = {0};
@@ -235,7 +301,7 @@ public class SmartJavaCopier {
                     .forEach(sourceFile -> {
                         fileCount[0]++;
                         String fileName = sourceFile.getFileName().toString();
-                        Path destFile = destDir.resolve(fileName);
+                        Path destFile = finalDestDir[0].resolve(fileName);
 
                         if (Files.exists(destFile)) {
                             conflictCount[0]++;
@@ -246,7 +312,7 @@ public class SmartJavaCopier {
                             String newName;
                             do {
                                 newName = String.format("%s_%d%s", baseName, counter++, extension);
-                                newDestFile = destDir.resolve(newName);
+                                newDestFile = finalDestDir[0].resolve(newName);
                             } while (Files.exists(newDestFile));
                             
                             System.out.println("  [Rename] " + fileName + " -> " + newName);
@@ -258,10 +324,24 @@ public class SmartJavaCopier {
                     });
             }
 
-            printSummary(fileCount[0], conflictCount[0], destDir);
+            printSummary(fileCount[0], conflictCount[0], finalDestDir[0]);
 
         } catch (IOException e) {
             System.err.println("\n[Critical Error] File operation failed: " + e.getMessage());
+        }
+    }
+
+    private static void deleteDirectory(Path path) throws IOException {
+        if (Files.exists(path)) {
+            Files.walk(path)
+                 .sorted(Comparator.reverseOrder())
+                 .forEach(p -> {
+                     try {
+                         Files.delete(p);
+                     } catch (IOException e) {
+                         System.err.println("  [Error] Failed to delete: " + p);
+                     }
+                 });
         }
     }
 
