@@ -8,48 +8,48 @@ import java.util.stream.Stream;
 
 public class SmartJavaCopier {
 
-    // ========================= 配置区域 =========================
-    // 1. IdeaProjects目录的根路径 (自动获取用户主目录)
+    // ========================= Configuration Area =========================
+    // 1. Root path of IdeaProjects directory (automatically obtained from user home directory)
     private static final Path PROJECTS_ROOT = Paths.get(System.getProperty("user.home"), "IdeaProjects");
 
-    // 2. 拷贝代码的目标根目录
+    // 2. Target root directory for copying code
     private static final Path DOC_ROOT = Paths.get(System.getProperty("user.home"), "Documents", "CODE");
     // ==========================================================
 
     public static void main(String[] args) {
-        // Java默认使用UTF-8，通常无需像chcp那样设置
-        // 设置程序标题在标准Java中不易实现，但对功能无影响
+        // Java uses UTF-8 by default, usually no need to set like chcp
+        // Setting program title is not easy in standard Java, but it doesn't affect functionality
 
         printHeader("Java Source Code Copier (Interactive Mode)");
 
-        // 1. 查找并显示可用的项目
+        // 1. Find and display available projects
         if (!Files.isDirectory(PROJECTS_ROOT)) {
-            System.err.println("[错误] 未找到IdeaProjects目录: " + PROJECTS_ROOT);
-            System.err.println("请检查脚本中的 \"PROJECTS_ROOT\" 配置是否正确。");
+            System.err.println("[Error] IdeaProjects directory not found: " + PROJECTS_ROOT);
+            System.err.println("Please check if the \"PROJECTS_ROOT\" configuration in the script is correct.");
             waitForEnterAndExit();
         }
 
-        System.out.println("[信息] 正在扫描 \"" + PROJECTS_ROOT + "\" 下的项目...\n");
+        System.out.println("[Info] Scanning projects under \"" + PROJECTS_ROOT + "\"...\n");
         List<Path> projects = findProjectDirectories(PROJECTS_ROOT);
 
         if (projects.isEmpty()) {
-            System.out.println("[警告] 在 \"" + PROJECTS_ROOT + "\" 目录中没有找到任何项目文件夹。");
+            System.out.println("[Warning] No project folders found in \"" + PROJECTS_ROOT + "\" directory.");
             waitForEnterAndExit();
         }
 
         displayProjects(projects);
         System.out.println("-------------------------------------------------------------");
 
-        // 2. 获取并验证用户输入
+        // 2. Get and validate user input
         int choice = getUserChoice(projects.size());
         Path selectedProject = projects.get(choice - 1);
         String projectName = selectedProject.getFileName().toString();
 
-        // 3. 确定源路径和目标路径
+        // 3. Determine source and target paths
         Path sourcePath = determineSourcePath(selectedProject);
         Path destPath = DOC_ROOT.resolve(projectName);
 
-        // 4. 执行拷贝操作
+        // 4. Perform copy operation
         copyJavaFiles(projectName, sourcePath, destPath);
 
         waitForEnterAndExit();
@@ -61,7 +61,7 @@ public class SmartJavaCopier {
                          .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                          .collect(Collectors.toList());
         } catch (IOException e) {
-            System.err.println("[错误] 扫描项目目录时发生IO异常: " + e.getMessage());
+            System.err.println("[Error] IO exception occurred while scanning project directories: " + e.getMessage());
             return Collections.emptyList();
         }
     }
@@ -75,17 +75,17 @@ public class SmartJavaCopier {
     private static int getUserChoice(int maxChoice) {
         Scanner scanner = new Scanner(System.in);
         while (true) {
-            System.out.print("\n请输入你想要拷贝的项目的编号: ");
+            System.out.print("\nPlease enter the number of the project you want to copy: ");
             String input = scanner.nextLine();
             try {
                 int choice = Integer.parseInt(input);
                 if (choice >= 1 && choice <= maxChoice) {
                     return choice;
                 } else {
-                    System.err.println("[错误] 输入无效，请输入 1 到 " + maxChoice + " 之间的一个数字。");
+                    System.err.println("[Error] Invalid input, please enter a number between 1 and " + maxChoice + ".");
                 }
             } catch (NumberFormatException e) {
-                System.err.println("[错误] 输入无效，请输入列表中一个有效的数字。");
+                System.err.println("[Error] Invalid input, please enter a valid number from the list.");
             }
         }
     }
@@ -95,29 +95,29 @@ public class SmartJavaCopier {
         if (Files.isDirectory(potentialSourcePath)) {
             return potentialSourcePath;
         } else {
-            System.out.println("[信息] 未找到 \"" + projectDir.getFileName() + "/src/main/java\"，将从项目根目录拷贝。");
+            System.out.println("[Info] \"" + projectDir.getFileName() + "/src/main/java\" not found, will copy from project root directory.");
             return projectDir;
         }
     }
 
     private static void copyJavaFiles(String projectName, Path sourceDir, Path destDir) {
         clearConsole();
-        System.out.println("[信息] 正在扁平化复制Java项目文件...");
-        System.out.println("  项目名称: " + projectName);
-        System.out.println("  源目录:   " + sourceDir);
-        System.out.println("  目标目录: " + destDir);
+        System.out.println("[Info] Flattening and copying Java project files...");
+        System.out.println("  Project Name: " + projectName);
+        System.out.println("  Source Directory:   " + sourceDir);
+        System.out.println("  Target Directory: " + destDir);
         System.out.println();
 
         try {
             if (!Files.exists(destDir)) {
-                System.out.println("[操作] 正在创建目标目录: " + destDir);
+                System.out.println("[Operation] Creating target directory: " + destDir);
                 Files.createDirectories(destDir);
             }
 
             final int[] fileCount = {0};
             final int[] conflictCount = {0};
 
-            System.out.println("[操作] 正在收集并仅复制 .java 文件...");
+            System.out.println("[Operation] Collecting and copying only .java files...");
             try (Stream<Path> walk = Files.walk(sourceDir)) {
                 walk.filter(path -> path.toString().endsWith(".java") && Files.isRegularFile(path))
                     .forEach(sourceFile -> {
@@ -137,10 +137,10 @@ public class SmartJavaCopier {
                                 newDestFile = destDir.resolve(newName);
                             } while (Files.exists(newDestFile));
                             
-                            System.out.println("  [重命名] " + fileName + " -> " + newName);
+                            System.out.println("  [Rename] " + fileName + " -> " + newName);
                             copyFile(sourceFile, newDestFile);
                         } else {
-                            System.out.println("  [复制] " + fileName);
+                            System.out.println("  [Copy] " + fileName);
                             copyFile(sourceFile, destFile);
                         }
                     });
@@ -149,7 +149,7 @@ public class SmartJavaCopier {
             printSummary(fileCount[0], conflictCount[0], destDir);
 
         } catch (IOException e) {
-            System.err.println("\n[严重错误] 文件操作失败: " + e.getMessage());
+            System.err.println("\n[Critical Error] File operation failed: " + e.getMessage());
         }
     }
 
@@ -157,7 +157,7 @@ public class SmartJavaCopier {
         try {
             Files.copy(source, dest, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            System.err.println("  [错误] 复制文件失败: " + source + " -> " + dest);
+            System.err.println("  [Error] Failed to copy file: " + source + " -> " + dest);
         }
     }
 
@@ -169,27 +169,26 @@ public class SmartJavaCopier {
     }
 
     private static void printSummary(int fileCount, int conflictCount, Path destDir) {
-        System.out.println("\n====================== 操 作 完 成 ======================");
+        System.out.println("\n====================== Operation Completed ======================");
         if (fileCount == 0) {
-            System.out.println("  在指定源目录中未找到任何 .java 文件。");
+            System.out.println("  No .java files found in the specified source directory.");
         } else {
-            System.out.println("  处理 .java 文件总数: " + fileCount);
-            System.out.println("  因重名而重命名文件数: " + conflictCount);
-            System.out.println("  所有文件已复制到:");
+            System.out.println("  Total .java files processed: " + fileCount);
+            System.out.println("  Number of files renamed due to conflicts: " + conflictCount);
+            System.out.println("  All files copied to:");
             System.out.println("  " + destDir);
         }
         System.out.println("=========================================================\n");
     }
 
     private static void waitForEnterAndExit() {
-        System.out.print("按 Enter 键退出...");
+        System.out.print("Press Enter to exit...");
         new Scanner(System.in).nextLine();
         System.exit(0);
     }
 
-
     private static void clearConsole() {
-        // 这是一个简单的模拟清屏，在所有终端上不一定完美，但能提供视觉分隔
+        // This is a simple simulation of clearing the console, may not be perfect on all terminals, but provides visual separation
         for (int i = 0; i < 50; ++i) System.out.println();
     }
 }
