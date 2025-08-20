@@ -16,7 +16,7 @@ jobs:
       - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '11' # 确保与 pom.xml 中的版本一致
+          java-version: '17' # 确保与 pom.xml 中的版本一致
           distribution: 'graalvm-community'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
