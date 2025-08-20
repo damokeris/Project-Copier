@@ -7,12 +7,9 @@ on:
 
 jobs:
   build:
-    # 使用矩阵策略
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-
-    # 根据矩阵中的os变量，选择不同的运行环境
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -29,34 +26,24 @@ jobs:
       - name: Build native executable with Maven
         run: mvn -Pnative package
 
-      # === 针对不同系统的产物处理 ===
-      - name: Prepare Artifact for Windows
+      # === 上传构建产物 (修正部分) ===
+      - name: Upload Windows Artifact
         if: runner.os == 'Windows'
-        run: |
-          # Windows下产物是 target/SmartJavaCopier.exe
-          # 为了统一，可以重命名
-          ren target\SmartJavaCopier.exe SmartJavaCopier-windows-amd64.exe
-          
-      - name: Prepare Artifact for Linux
-        if: runner.os == 'Linux'
-        run: |
-          # Linux下产物是 target/SmartJavaCopier
-          mv target/SmartJavaCopier SmartJavaCopier-linux-amd64
-
-      - name: Prepare Artifact for macOS
-        if: runner.os == 'macOS'
-        run: |
-          # macOS下产物是 target/SmartJavaCopier
-          mv target/SmartJavaCopier SmartJavaCopier-macos-amd64
-
-      # === 上传构建产物 ===
-      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          # 使用矩阵变量命名，方便区分
-          name: SmartJavaCopier-${{ runner.os }}
-          path: |
-            SmartJavaCopier-windows-amd64.exe
-            SmartJavaCopier-linux-amd64
-            SmartJavaCopier-macos-amd64
-          # if-no-files-found: error # 如果找不到文件则报错，帮助调试
+          name: SmartJavaCopier-Windows
+          path: target/SmartJavaCopier.exe
+
+      - name: Upload Linux Artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartJavaCopier-Linux
+          path: target/SmartJavaCopier
+
+      - name: Upload macOS Artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartJavaCopier-macOS
+          path: target/SmartJavaCopier
