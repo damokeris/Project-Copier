@@ -11,6 +11,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write  # 添加写权限以推送标签
 
     steps:
       - name: Checkout repository
@@ -102,7 +104,7 @@ jobs:
       contents: write  # 授予写权限以创建发布
     
     steps:
-      - name: Checkout repository  # 新增：检出代码以获取git历史
+      - name: Checkout repository  # 检出代码以获取git历史
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # 获取所有历史记录以便版本计算
@@ -131,7 +133,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.determine_version.outputs.tag_name }}  # 现在tag_name已正确提供
+          tag_name: ${{ steps.determine_version.outputs.tag_name }}
           release_name: Release ${{ steps.determine_version.outputs.tag_name }}
           draft: false
           prerelease: false
