@@ -3,21 +3,16 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-
     <groupId>com.example</groupId>
     <artifactId>project-copier</artifactId>
     <version>1.0-SNAPSHOT</version>
-
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <graalvm.version>22.3.1</graalvm.version> 
-        <!-- 定义一个默认的构建参数属性 -->
+        <graalvm.version>22.3.1</graalvm.version>
         <native.build.args>--no-fallback -H:ConfigurationFileDirectories=src/main/resources/META-INF/native-image</native.build.args>
-
     </properties>
-
     <profiles>
         <profile>
             <id>linux</id>
@@ -49,16 +44,9 @@
                             </execution>
                         </executions>
                         <configuration>
-                            <!-- 主类 -->
                             <mainClass>com.example.copier.SmartJavaCopier</mainClass>
-                            <!-- 生成的可执行文件名 -->
                             <imageName>SmartJavaCopier</imageName>
-                            <buildArgs>
-                                <!-- 优化：减小文件体积 -->
-                                --no-fallback
-                                --static
-                                -H:ConfigurationFileDirectories=src/main/resources/META-INF/native-image
-                            </buildArgs>
+                            <buildArgs>${native.build.args}</buildArgs>
                         </configuration>
                     </plugin>
                 </plugins>
