@@ -12,7 +12,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write  # 添加写权限以推送标签
+      contents: write  # 授予写权限以推送标签
 
     steps:
       - name: Checkout repository
@@ -50,8 +50,9 @@ jobs:
           $version = "1.0.0-$timestamp-$commit_hash"
           $tag_name = "v$version"
           
-          Write-Output "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Output "tag_name=$tag_name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          # 使用现代方式设置输出
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag_name=$tag_name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: Create Git Tag (Unix)
         if: runner.os != 'Windows'
@@ -127,21 +128,6 @@ jobs:
           echo "Using version: $version"
           echo "Using tag: $tag_name"
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.determine_version.outputs.tag_name }}
-          release_name: Release ${{ steps.determine_version.outputs.tag_name }}
-          draft: false
-          prerelease: false
-          body: |
-            Automated release triggered by push to main branch.
-            Version: ${{ steps.determine_version.outputs.version }}
-            Commit: ${{ github.sha }}
-
       - name: Check Artifact Paths
         run: |
           echo "Listing artifacts directory:"
@@ -168,32 +154,25 @@ jobs:
             exit 1
           fi
 
-      - name: Upload Windows Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/SmartJavaCopier-Windows/SmartJavaCopier.exe
-          asset_name: SmartJavaCopier-${{ steps.determine_version.outputs.version }}-windows.exe
-          asset_content_type: application/octet-stream
+      - name: Rename Artifacts
+        run: |
+          # 重命名文件以包含版本信息
+          mv artifacts/SmartJavaCopier-Windows/SmartJavaCopier.exe "artifacts/SmartJavaCopier-${{ steps.determine_version.outputs.version }}-windows.exe"
+          mv artifacts/SmartJavaCopier-Linux/SmartJavaCopier "artifacts/SmartJavaCopier-${{ steps.determine_version.outputs.version }}-linux"
+          mv artifacts/SmartJavaCopier-macOS/SmartJavaCopier "artifacts/SmartJavaCopier-${{ steps.determine_version.outputs.version }}-macos"
 
-      - name: Upload Linux Asset
-        uses: actions/upload-release-asset@v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.determine_version.outputs.tag_name }}
+          name: Release ${{ steps.determine_version.outputs.tag_name }}
+          body: |
+            Automated release triggered by push to main branch.
+            Version: ${{ steps.determine_version.outputs.version }}
+            Commit: ${{ github.sha }}
+          files: |
+            artifacts/SmartJavaCopier-${{ steps.determine_version.outputs.version }}-windows.exe
+            artifacts/SmartJavaCopier-${{ steps.determine_version.outputs.version }}-linux
+            artifacts/SmartJavaCopier-${{ steps.determine_version.outputs.version }}-macos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/SmartJavaCopier-Linux/SmartJavaCopier
-          asset_name: SmartJavaCopier-${{ steps.determine_version.outputs.version }}-linux
-          asset_content_type: application/octet-stream
-
-      - name: Upload macOS Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: artifacts/SmartJavaCopier-macOS/SmartJavaCopier
-          asset_name: SmartJavaCopier-${{ steps.determine_version.outputs.version }}-macos
-          asset_content_type: application/octet-stream
