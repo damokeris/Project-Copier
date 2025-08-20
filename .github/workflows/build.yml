@@ -102,6 +102,11 @@ jobs:
       contents: write  # 授予写权限以创建发布
     
     steps:
+      - name: Checkout repository  # 新增：检出代码以获取git历史
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取所有历史记录以便版本计算
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -110,14 +115,10 @@ jobs:
       - name: Determine Version and Tag
         id: determine_version
         run: |
-          # 从所有可能的步骤输出中提取版本和标签
-          if [ -n "${{ needs.build.outputs.version_unix }}" ]; then
-            version="${{ needs.build.outputs.version_unix }}"
-            tag_name="${{ needs.build.outputs.tag_name_unix }}"
-          else
-            version="${{ needs.build.outputs.version_windows }}"
-            tag_name="${{ needs.build.outputs.tag_name_windows }}"
-          fi
+          timestamp=$(date +%Y%m%d%H%M%S)
+          commit_hash=$(git rev-parse --short HEAD)
+          version="1.0.0-$timestamp-$commit_hash"
+          tag_name="v$version"
           
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
@@ -130,7 +131,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ steps.determine_version.outputs.tag_name }}
+          tag_name: ${{ steps.determine_version.outputs.tag_name }}  # 现在tag_name已正确提供
           release_name: Release ${{ steps.determine_version.outputs.tag_name }}
           draft: false
           prerelease: false
