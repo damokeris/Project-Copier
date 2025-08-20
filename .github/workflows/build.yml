@@ -32,9 +32,21 @@ jobs:
         id: version_unix
         shell: bash
         run: |
+          # 获取最新的标签
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          
+          # 移除v前缀并分割版本号
+          version_number=${latest_tag#v}
+          IFS='.' read -r major minor patch <<< "$version_number"
+          
+          # 递增修订号
+          patch=$((patch + 1))
+          new_version="$major.$minor.$patch"
+          
           timestamp=$(date +%Y%m%d%H%M%S)
           commit_hash=$(git rev-parse --short HEAD)
-          version="1.0.0-$timestamp-$commit_hash"
+          version="$new_version-$timestamp-$commit_hash"
           tag_name="v$version"
           
           echo "version=$version" >> $GITHUB_OUTPUT
@@ -45,9 +57,25 @@ jobs:
         id: version_windows
         shell: pwsh
         run: |
+          # 获取最新的标签
+          $latest_tag = git describe --tags --abbrev=0 2>$null
+          if (-not $latest_tag) { $latest_tag = "v0.0.0" }
+          Write-Host "Latest tag: $latest_tag"
+          
+          # 移除v前缀并分割版本号
+          $version_number = $latest_tag -replace '^v', ''
+          $version_parts = $version_number -split '\.'
+          $major = [int]$version_parts[0]
+          $minor = [int]$version_parts[1]
+          $patch = [int]$version_parts[2]
+          
+          # 递增修订号
+          $patch = $patch + 1
+          $new_version = "$major.$minor.$patch"
+          
           $timestamp = Get-Date -Format "yyyyMMddHHmmss"
           $commit_hash = git rev-parse --short HEAD
-          $version = "1.0.0-$timestamp-$commit_hash"
+          $version = "$new_version-$timestamp-$commit_hash"
           $tag_name = "v$version"
           
           # 使用现代方式设置输出
@@ -118,9 +146,21 @@ jobs:
       - name: Determine Version and Tag
         id: determine_version
         run: |
+          # 获取最新的标签
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $latest_tag"
+          
+          # 移除v前缀并分割版本号
+          version_number=${latest_tag#v}
+          IFS='.' read -r major minor patch <<< "$version_number"
+          
+          # 递增修订号
+          patch=$((patch + 1))
+          new_version="$major.$minor.$patch"
+          
           timestamp=$(date +%Y%m%d%H%M%S)
           commit_hash=$(git rev-parse --short HEAD)
-          version="1.0.0-$timestamp-$commit_hash"
+          version="$new_version-$timestamp-$commit_hash"
           tag_name="v$version"
           
           echo "version=$version" >> $GITHUB_OUTPUT
