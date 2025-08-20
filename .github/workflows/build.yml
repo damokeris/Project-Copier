@@ -25,27 +25,49 @@ jobs:
           distribution: 'graalvm-community'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate Version and Tag
-        id: version
+      - name: Generate Version and Tag (Unix)
+        if: runner.os != 'Windows'
+        id: version_unix
+        shell: bash
         run: |
-          # 获取当前时间戳和短提交哈希
           timestamp=$(date +%Y%m%d%H%M%S)
           commit_hash=$(git rev-parse --short HEAD)
-          # 生成版本号格式：主分支版本号-时间戳-提交哈希
           version="1.0.0-$timestamp-$commit_hash"
           tag_name="v$version"
           
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
-          echo "Generated version: $version"
-          echo "Generated tag: $tag_name"
 
-      - name: Create Git Tag
+      - name: Generate Version and Tag (Windows)
+        if: runner.os == 'Windows'
+        id: version_windows
+        shell: pwsh
+        run: |
+          $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+          $commit_hash = git rev-parse --short HEAD
+          $version = "1.0.0-$timestamp-$commit_hash"
+          $tag_name = "v$version"
+          
+          Write-Output "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Output "tag_name=$tag_name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Create Git Tag (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git tag ${{ steps.version.outputs.tag_name }}
-          git push origin ${{ steps.version.outputs.tag_name }}
+          git tag ${{ steps.version_unix.outputs.tag_name }}
+          git push origin ${{ steps.version_unix.outputs.tag_name }}
+
+      - name: Create Git Tag (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag ${{ steps.version_windows.outputs.tag_name }}
+          git push origin ${{ steps.version_windows.outputs.tag_name }}
 
       - name: Build native executable with Maven
         run: mvn -Pnative package
@@ -78,11 +100,29 @@ jobs:
     needs: build  # 依赖于build job完成
     permissions:
       contents: write  # 授予写权限以创建发布
+    
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts  # 下载到artifacts目录
+
+      - name: Determine Version and Tag
+        id: determine_version
+        run: |
+          # 从所有可能的步骤输出中提取版本和标签
+          if [ -n "${{ needs.build.outputs.version_unix }}" ]; then
+            version="${{ needs.build.outputs.version_unix }}"
+            tag_name="${{ needs.build.outputs.tag_name_unix }}"
+          else
+            version="${{ needs.build.outputs.version_windows }}"
+            tag_name="${{ needs.build.outputs.tag_name_windows }}"
+          fi
+          
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
+          echo "Using version: $version"
+          echo "Using tag: $tag_name"
 
       - name: Create GitHub Release
         id: create_release
@@ -90,13 +130,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ needs.build.outputs.tag_name }}
-          release_name: Release ${{ needs.build.outputs.tag_name }}
+          tag_name: ${{ steps.determine_version.outputs.tag_name }}
+          release_name: Release ${{ steps.determine_version.outputs.tag_name }}
           draft: false
           prerelease: false
           body: |
             Automated release triggered by push to main branch.
-            Version: ${{ needs.build.outputs.version }}
+            Version: ${{ steps.determine_version.outputs.version }}
             Commit: ${{ github.sha }}
 
       - name: Check Artifact Paths
@@ -132,7 +172,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/SmartJavaCopier-Windows/SmartJavaCopier.exe
-          asset_name: SmartJavaCopier-${{ needs.build.outputs.version }}-windows.exe
+          asset_name: SmartJavaCopier-${{ steps.determine_version.outputs.version }}-windows.exe
           asset_content_type: application/octet-stream
 
       - name: Upload Linux Asset
@@ -142,7 +182,7 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/SmartJavaCopier-Linux/SmartJavaCopier
-          asset_name: SmartJavaCopier-${{ needs.build.outputs.version }}-linux
+          asset_name: SmartJavaCopier-${{ steps.determine_version.outputs.version }}-linux
           asset_content_type: application/octet-stream
 
       - name: Upload macOS Asset
@@ -152,5 +192,5 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: artifacts/SmartJavaCopier-macOS/SmartJavaCopier
-          asset_name: SmartJavaCopier-${{ needs.build.outputs.version }}-macos
+          asset_name: SmartJavaCopier-${{ steps.determine_version.outputs.version }}-macos
           asset_content_type: application/octet-stream
