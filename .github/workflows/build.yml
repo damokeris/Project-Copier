@@ -1,34 +1,62 @@
-name: Build Java Copier EXE
+name: Build Cross-Platform Java Copier
 
 on:
   push:
-    branches: [ "main", "master" ] # 当代码推送到 main 或 master 分支时触发
-  workflow_dispatch: # 允许手动触发
+    branches: [ "main", "master" ]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest # 使用最新的Ubuntu环境来构建
+    # 使用矩阵策略
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    # 根据矩阵中的os变量，选择不同的运行环境
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4 # 建议也将 checkout 升级到 v4
+        uses: actions/checkout@v4
 
       - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '17' # 确保与 pom.xml 中的版本一致
+          java-version: '17'
           distribution: 'graalvm-community'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build native executable with Maven
         run: mvn -Pnative package
 
-      - name: Rename executable for Windows
-        # GitHub Actions 默认在Linux上构建，文件名没有.exe后缀，我们手动加上
-        run: mv target/SmartJavaCopier target/SmartJavaCopier.exe
+      # === 针对不同系统的产物处理 ===
+      - name: Prepare Artifact for Windows
+        if: runner.os == 'Windows'
+        run: |
+          # Windows下产物是 target/SmartJavaCopier.exe
+          # 为了统一，可以重命名
+          ren target\SmartJavaCopier.exe SmartJavaCopier-windows-amd64.exe
+          
+      - name: Prepare Artifact for Linux
+        if: runner.os == 'Linux'
+        run: |
+          # Linux下产物是 target/SmartJavaCopier
+          mv target/SmartJavaCopier SmartJavaCopier-linux-amd64
 
+      - name: Prepare Artifact for macOS
+        if: runner.os == 'macOS'
+        run: |
+          # macOS下产物是 target/SmartJavaCopier
+          mv target/SmartJavaCopier SmartJavaCopier-macos-amd64
+
+      # === 上传构建产物 ===
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4 # <-- 这里是关键的修正
+        uses: actions/upload-artifact@v4
         with:
-          name: SmartJavaCopier-Windows-Executable
-          path: target/SmartJavaCopier.exe
+          # 使用矩阵变量命名，方便区分
+          name: SmartJavaCopier-${{ runner.os }}
+          path: |
+            SmartJavaCopier-windows-amd64.exe
+            SmartJavaCopier-linux-amd64
+            SmartJavaCopier-macos-amd64
+          # if-no-files-found: error # 如果找不到文件则报错，帮助调试
