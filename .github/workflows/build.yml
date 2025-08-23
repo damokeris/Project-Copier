@@ -12,7 +12,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: write  # 授予写权限以推送标签
+      contents: read  # 只读权限，不推送标签
 
     steps:
       - name: Checkout repository
@@ -26,79 +26,6 @@ jobs:
           java-version: '17'
           distribution: 'graalvm-community'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate Version and Tag (Unix)
-        if: runner.os != 'Windows'
-        id: version_unix
-        shell: bash
-        run: |
-          # 获取最新的标签
-          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $latest_tag"
-          
-          # 移除v前缀并分割版本号
-          version_number=${latest_tag#v}
-          IFS='.' read -r major minor patch <<< "$version_number"
-          
-          # 递增修订号
-          patch=$((patch + 1))
-          new_version="$major.$minor.$patch"
-          
-          timestamp=$(date +%Y%m%d%H%M%S)
-          commit_hash=$(git rev-parse --short HEAD)
-          version="$new_version-$timestamp-$commit_hash"
-          tag_name="v$version"
-          
-          echo "version=$version" >> $GITHUB_OUTPUT
-          echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
-
-      - name: Generate Version and Tag (Windows)
-        if: runner.os == 'Windows'
-        id: version_windows
-        shell: pwsh
-        run: |
-          # 获取最新的标签
-          $latest_tag = git describe --tags --abbrev=0 2>$null
-          if (-not $latest_tag) { $latest_tag = "v0.0.0" }
-          Write-Host "Latest tag: $latest_tag"
-          
-          # 移除v前缀并分割版本号
-          $version_number = $latest_tag -replace '^v', ''
-          $version_parts = $version_number -split '\.'
-          $major = [int]$version_parts[0]
-          $minor = [int]$version_parts[1]
-          $patch = [int]$version_parts[2]
-          
-          # 递增修订号
-          $patch = $patch + 1
-          $new_version = "$major.$minor.$patch"
-          
-          $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-          $commit_hash = git rev-parse --short HEAD
-          $version = "$new_version-$timestamp-$commit_hash"
-          $tag_name = "v$version"
-          
-          # 使用现代方式设置输出
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "tag_name=$tag_name" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-
-      - name: Create Git Tag (Unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag ${{ steps.version_unix.outputs.tag_name }}
-          git push origin ${{ steps.version_unix.outputs.tag_name }}
-
-      - name: Create Git Tag (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag ${{ steps.version_windows.outputs.tag_name }}
-          git push origin ${{ steps.version_windows.outputs.tag_name }}
 
       - name: Build native executable with Maven
         run: mvn -Pnative package
@@ -130,10 +57,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: build  # 依赖于build job完成
     permissions:
-      contents: write  # 授予写权限以创建发布
+      contents: write  # 授予写权限以创建发布和推送标签
     
     steps:
-      - name: Checkout repository  # 检出代码以获取git历史
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # 获取所有历史记录以便版本计算
@@ -150,11 +77,12 @@ jobs:
           latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: $latest_tag"
           
-          # 移除v前缀并分割版本号
+          # 移除v前缀并提取纯数字版本部分
           version_number=${latest_tag#v}
-          IFS='.' read -r major minor patch <<< "$version_number"
+          pure_version=$(echo "$version_number" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' || echo "0.0.0")
+          echo "Pure version: $pure_version"
           
-          # 递增修订号
+          IFS='.' read -r major minor patch <<< "$pure_version"
           patch=$((patch + 1))
           new_version="$major.$minor.$patch"
           
@@ -167,6 +95,13 @@ jobs:
           echo "tag_name=$tag_name" >> $GITHUB_OUTPUT
           echo "Using version: $version"
           echo "Using tag: $tag_name"
+
+      - name: Create Git Tag and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag ${{ steps.determine_version.outputs.tag_name }}
+          git push origin ${{ steps.determine_version.outputs.tag_name }}
 
       - name: Check Artifact Paths
         run: |
