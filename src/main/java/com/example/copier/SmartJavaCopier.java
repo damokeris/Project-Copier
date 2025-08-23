@@ -26,10 +26,23 @@ public class SmartJavaCopier {
         "src"               // Simple source structure
     );
     
-    // 4. Maximum depth for recursive directory scanning (to avoid performance issues)
+    // 4. Files to copy in addition to Java files
+    private static final List<String> ADDITIONAL_FILES_TO_COPY = Arrays.asList(
+        "pom.xml",
+        "build.gradle",
+        "build.xml",
+        "application.yaml",
+        "application.yml",
+        "application.properties",
+        "logback.xml",
+        "log4j.properties",
+        "log4j2.xml"
+    );
+    
+    // 5. Maximum depth for recursive directory scanning (to avoid performance issues)
     private static final int MAX_SCAN_DEPTH = 5;
     
-    // 5. Directories to exclude from scanning (to avoid permission issues)
+    // 6. Directories to exclude from scanning (to avoid permission issues)
     private static final List<String> EXCLUDED_DIRECTORIES = Arrays.asList(
         "AppData", "Application Data", "Local Settings", "Windows", "Program Files",
         "Program Files (x86)", "ProgramData", "System Volume Information", "$Recycle.Bin",
@@ -68,7 +81,7 @@ public class SmartJavaCopier {
         Path destPath = DOC_ROOT.resolve(projectName);
 
         // 4. Perform copy operation
-        copyJavaFiles(projectName, sourcePath, destPath);
+        copyJavaFiles(projectName, selectedProject, sourcePath, destPath);
 
         waitForEnterAndExit();
     }
@@ -227,7 +240,7 @@ public class SmartJavaCopier {
         return projectDir;
     }
 
-    private static void copyJavaFiles(String projectName, Path sourceDir, Path destDir) {
+    private static void copyJavaFiles(String projectName, Path projectRoot, Path sourceDir, Path destDir) {
         clearConsole();
         System.out.println("[Info] Flattening and copying Java project files...");
         System.out.println("  Project Name: " + projectName);
@@ -295,7 +308,9 @@ public class SmartJavaCopier {
             final int[] fileCount = {0};
             final int[] conflictCount = {0};
 
-            System.out.println("[Operation] Collecting and copying only .java files...");
+            System.out.println("[Operation] Collecting and copying .java files and configuration files...");
+            
+            // Copy Java files
             try (Stream<Path> walk = Files.walk(sourceDir)) {
                 walk.filter(path -> path.toString().endsWith(".java") && Files.isRegularFile(path))
                     .forEach(sourceFile -> {
@@ -322,6 +337,77 @@ public class SmartJavaCopier {
                             copyFile(sourceFile, destFile);
                         }
                     });
+            }
+            
+            // Copy additional configuration files from project root
+            for (String fileName : ADDITIONAL_FILES_TO_COPY) {
+                Path sourceFile = projectRoot.resolve(fileName);
+                if (Files.exists(sourceFile) && Files.isRegularFile(sourceFile)) {
+                    fileCount[0]++;
+                    Path destFile = finalDestDir[0].resolve(fileName);
+                    
+                    if (Files.exists(destFile)) {
+                        conflictCount[0]++;
+                        int counter = 1;
+                        String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                        String extension = fileName.substring(fileName.lastIndexOf('.'));
+                        Path newDestFile;
+                        String newName;
+                        do {
+                            newName = String.format("%s_%d%s", baseName, counter++, extension);
+                            newDestFile = finalDestDir[0].resolve(newName);
+                        } while (Files.exists(newDestFile));
+                        
+                        System.out.println("  [Rename Config] " + fileName + " -> " + newName);
+                        copyFile(sourceFile, newDestFile);
+                    } else {
+                        System.out.println("  [Copy Config] " + fileName);
+                        copyFile(sourceFile, destFile);
+                    }
+                }
+            }
+            
+            // Copy configuration files from resources directories (recursively)
+            System.out.println("[Operation] Scanning for configuration files in resources directories...");
+            List<Path> resourcesDirs = Arrays.asList(
+                projectRoot.resolve("src").resolve("main").resolve("resources"),
+                projectRoot.resolve("src").resolve("test").resolve("resources")
+            );
+            
+            for (Path resourcesDir : resourcesDirs) {
+                if (Files.exists(resourcesDir) && Files.isDirectory(resourcesDir)) {
+                    try (Stream<Path> walk = Files.walk(resourcesDir)) {
+                        walk.filter(path -> {
+                            String fileName = path.getFileName().toString();
+                            return ADDITIONAL_FILES_TO_COPY.contains(fileName) && Files.isRegularFile(path);
+                        }).forEach(sourceFile -> {
+                            fileCount[0]++;
+                            String fileName = sourceFile.getFileName().toString();
+                            Path destFile = finalDestDir[0].resolve(fileName);
+                            
+                            if (Files.exists(destFile)) {
+                                conflictCount[0]++;
+                                int counter = 1;
+                                String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                String extension = fileName.substring(fileName.lastIndexOf('.'));
+                                Path newDestFile;
+                                String newName;
+                                do {
+                                    newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                    newDestFile = finalDestDir[0].resolve(newName);
+                                } while (Files.exists(newDestFile));
+                                
+                                System.out.println("  [Rename Resource] " + fileName + " -> " + newName);
+                                copyFile(sourceFile, newDestFile);
+                            } else {
+                                System.out.println("  [Copy Resource] " + fileName);
+                                copyFile(sourceFile, destFile);
+                            }
+                        });
+                    } catch (IOException e) {
+                        System.err.println("[Warning] Error accessing resources directory: " + resourcesDir);
+                    }
+                }
             }
 
             printSummary(fileCount[0], conflictCount[0], finalDestDir[0]);
@@ -363,9 +449,9 @@ public class SmartJavaCopier {
     private static void printSummary(int fileCount, int conflictCount, Path destDir) {
         System.out.println("\n====================== Operation Completed ======================");
         if (fileCount == 0) {
-            System.out.println("  No .java files found in the specified source directory.");
+            System.out.println("  No files found in the specified source directory.");
         } else {
-            System.out.println("  Total .java files processed: " + fileCount);
+            System.out.println("  Total files processed: " + fileCount);
             System.out.println("  Number of files renamed due to conflicts: " + conflictCount);
             System.out.println("  All files copied to:");
             System.out.println("  " + destDir);
