@@ -241,11 +241,11 @@ public class SmartJavaCopier {
 
         // Check if target directory already exists
         if (Files.exists(finalDestDir[0])) {
-            System.out.println("目标目录已存在: " + finalDestDir[0]);
-            System.out.println("请选择操作:");
-            System.out.println("  1. 覆盖 - 删除现有目录并复制");
-            System.out.println("  2. 跳过 - 不复制");
-            System.out.println("  3. 重命名 - 指定新名称");
+            System.out.println("Target directory already exists: " + finalDestDir[0]);
+            System.out.println("Please choose an action:");
+            System.out.println("  1. Overwrite - Delete existing directory and copy");
+            System.out.println("  2. Skip - Do not copy");
+            System.out.println("  3. Rename - Specify a new name");
 
             Scanner scanner = new Scanner(System.in);
             String input = scanner.nextLine();
@@ -260,28 +260,28 @@ public class SmartJavaCopier {
                 case 1: // Overwrite
                     try {
                         deleteDirectory(finalDestDir[0]);
-                        System.out.println("[Operation] 已删除现有目录: " + finalDestDir[0]);
+                        System.out.println("[Operation] Deleted existing directory: " + finalDestDir[0]);
                     } catch (IOException e) {
-                        System.err.println("[Error] 无法删除目录: " + e.getMessage());
+                        System.err.println("[Error] Failed to delete directory: " + e.getMessage());
                         return;
                     }
                     break;
                 case 2: // Skip
-                    System.out.println("[Info] 跳过复制。");
+                    System.out.println("[Info] Skipping copy.");
                     return;
                 case 3: // Rename
-                    System.out.print("请输入新项目名称: ");
+                    System.out.print("Please enter a new project name: ");
                     String newName = scanner.nextLine().trim();
                     if (newName.isEmpty()) {
-                        System.out.println("[Warning] 名称无效，使用默认重命名。");
+                        System.out.println("[Warning] Invalid name, using default rename.");
                         newName = projectName + "_copy";
                     }
                     finalDestDir[0] = DOC_ROOT.resolve(newName);
                     finalProjectName[0] = newName;
-                    System.out.println("[Info] 新目标目录: " + finalDestDir[0]);
+                    System.out.println("[Info] New target directory: " + finalDestDir[0]);
                     break;
                 default:
-                    System.out.println("[Warning] 无效选择，默认跳过。");
+                    System.out.println("[Warning] Invalid choice, defaulting to skip.");
                     return;
             }
         }
