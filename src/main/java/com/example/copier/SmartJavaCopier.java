@@ -350,6 +350,18 @@ public class SmartJavaCopier {
         return submodules;
     }
 
+    // Helper method to add service name suffix to filename
+    private static String addServiceSuffix(String fileName, String serviceName) {
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            String name = fileName.substring(0, dotIndex);
+            String extension = fileName.substring(dotIndex);
+            return name + "-" + serviceName + extension;
+        } else {
+            return fileName + "-" + serviceName;
+        }
+    }
+
     private static void copyJavaFiles(String projectName, Path projectRoot, Path sourceDir, Path destDir) {
         clearConsole();
         System.out.println("[Info] Flattening and copying Java project files...");
@@ -465,35 +477,22 @@ public class SmartJavaCopier {
                             System.err.println("[Warning] Error walking submodule source directory: " + e.getMessage());
                         }
                         
-                        // Copy configuration files from submodule
+                        // Copy configuration files from submodule with service name suffix
                         for (String fileName : ADDITIONAL_FILES_TO_COPY) {
                             Path sourceFile = submodule.resolve(fileName);
                             if (Files.exists(sourceFile) && Files.isRegularFile(sourceFile)) {
                                 fileCount[0]++;
-                                Path destFile = finalDestDir[0].resolve(fileName);
+                                // Use service name as suffix for configuration files
+                                String newFileName = addServiceSuffix(fileName, submoduleName);
+                                Path destFile = finalDestDir[0].resolve(newFileName);
                                 
-                                if (Files.exists(destFile)) {
-                                    conflictCount[0]++;
-                                    int counter = 1;
-                                    String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-                                    String extension = fileName.substring(fileName.lastIndexOf('.'));
-                                    Path newDestFile;
-                                    String newName;
-                                    do {
-                                        newName = String.format("%s_%d%s", baseName, counter++, extension);
-                                        newDestFile = finalDestDir[0].resolve(newName);
-                                    } while (Files.exists(newDestFile));
-                                    
-                                    System.out.println("  [Rename Config] " + fileName + " -> " + newName);
-                                    copyFile(sourceFile, newDestFile);
-                                } else {
-                                    System.out.println("  [Copy Config] " + fileName);
-                                    copyFile(sourceFile, destFile);
-                                }
+                                // For microservices, we always use service name suffix, so no need to check for conflicts
+                                System.out.println("  [Copy Config] " + fileName + " -> " + newFileName);
+                                copyFile(sourceFile, destFile);
                             }
                         }
                         
-                        // Copy configuration files from submodule resources directories
+                        // Copy configuration files from submodule resources directories with service name suffix
                         List<Path> resourcesDirs = Arrays.asList(
                             submodule.resolve("src").resolve("main").resolve("resources"),
                             submodule.resolve("src").resolve("test").resolve("resources")
@@ -508,26 +507,13 @@ public class SmartJavaCopier {
                                     }).forEach(sourceFile -> {
                                         fileCount[0]++;
                                         String fileName = sourceFile.getFileName().toString();
-                                        Path destFile = finalDestDir[0].resolve(fileName);
+                                        // Use service name as suffix for configuration files
+                                        String newFileName = addServiceSuffix(fileName, submoduleName);
+                                        Path destFile = finalDestDir[0].resolve(newFileName);
                                         
-                                        if (Files.exists(destFile)) {
-                                            conflictCount[0]++;
-                                            int counter = 1;
-                                            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-                                            String extension = fileName.substring(fileName.lastIndexOf('.'));
-                                            Path newDestFile;
-                                            String newName;
-                                            do {
-                                                newName = String.format("%s_%d%s", baseName, counter++, extension);
-                                                newDestFile = finalDestDir[0].resolve(newName);
-                                            } while (Files.exists(newDestFile));
-                                            
-                                            System.out.println("  [Rename Resource] " + fileName + " -> " + newName);
-                                            copyFile(sourceFile, newDestFile);
-                                        } else {
-                                            System.out.println("  [Copy Resource] " + fileName);
-                                            copyFile(sourceFile, destFile);
-                                        }
+                                        // For microservices, we always use service name suffix, so no need to check for conflicts
+                                        System.out.println("  [Copy Resource] " + fileName + " -> " + newFileName);
+                                        copyFile(sourceFile, destFile);
                                     });
                                 } catch (IOException e) {
                                     System.err.println("[Warning] Error accessing submodule resources directory: " + resourcesDir);
@@ -572,6 +558,7 @@ public class SmartJavaCopier {
             }
             
             // Copy additional configuration files from project root (for both multi-module and single module)
+            // For multi-module projects, we also copy the parent project's configuration files
             for (String fileName : ADDITIONAL_FILES_TO_COPY) {
                 Path sourceFile = projectRoot.resolve(fileName);
                 if (Files.exists(sourceFile) && Files.isRegularFile(sourceFile)) {
@@ -580,18 +567,26 @@ public class SmartJavaCopier {
                     
                     if (Files.exists(destFile)) {
                         conflictCount[0]++;
-                        int counter = 1;
-                        String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-                        String extension = fileName.substring(fileName.lastIndexOf('.'));
-                        Path newDestFile;
-                        String newName;
-                        do {
-                            newName = String.format("%s_%d%s", baseName, counter++, extension);
-                            newDestFile = finalDestDir[0].resolve(newName);
-                        } while (Files.exists(newDestFile));
-                        
-                        System.out.println("  [Rename Config] " + fileName + " -> " + newName);
-                        copyFile(sourceFile, newDestFile);
+                        // For multi-module parent projects, use project name as suffix
+                        if (isMultiModule) {
+                            String newFileName = addServiceSuffix(fileName, projectName);
+                            Path newDestFile = finalDestDir[0].resolve(newFileName);
+                            System.out.println("  [Rename Config] " + fileName + " -> " + newFileName);
+                            copyFile(sourceFile, newDestFile);
+                        } else {
+                            int counter = 1;
+                            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                            String extension = fileName.substring(fileName.lastIndexOf('.'));
+                            Path newDestFile;
+                            String newName;
+                            do {
+                                newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                newDestFile = finalDestDir[0].resolve(newName);
+                            } while (Files.exists(newDestFile));
+                            
+                            System.out.println("  [Rename Config] " + fileName + " -> " + newName);
+                            copyFile(sourceFile, newDestFile);
+                        }
                     } else {
                         System.out.println("  [Copy Config] " + fileName);
                         copyFile(sourceFile, destFile);
@@ -619,18 +614,26 @@ public class SmartJavaCopier {
                             
                             if (Files.exists(destFile)) {
                                 conflictCount[0]++;
-                                int counter = 1;
-                                String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-                                String extension = fileName.substring(fileName.lastIndexOf('.'));
-                                Path newDestFile;
-                                String newName;
-                                do {
-                                    newName = String.format("%s_%d%s", baseName, counter++, extension);
-                                    newDestFile = finalDestDir[0].resolve(newName);
-                                } while (Files.exists(newDestFile));
-                                
-                                System.out.println("  [Rename Resource] " + fileName + " -> " + newName);
-                                copyFile(sourceFile, newDestFile);
+                                // For multi-module parent projects, use project name as suffix
+                                if (isMultiModule) {
+                                    String newFileName = addServiceSuffix(fileName, projectName);
+                                    Path newDestFile = finalDestDir[0].resolve(newFileName);
+                                    System.out.println("  [Rename Resource] " + fileName + " -> " + newFileName);
+                                    copyFile(sourceFile, newDestFile);
+                                } else {
+                                    int counter = 1;
+                                    String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                    String extension = fileName.substring(fileName.lastIndexOf('.'));
+                                    Path newDestFile;
+                                    String newName;
+                                    do {
+                                        newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                        newDestFile = finalDestDir[0].resolve(newName);
+                                    } while (Files.exists(newDestFile));
+                                    
+                                    System.out.println("  [Rename Resource] " + fileName + " -> " + newName);
+                                    copyFile(sourceFile, newDestFile);
+                                }
                             } else {
                                 System.out.println("  [Copy Resource] " + fileName);
                                 copyFile(sourceFile, destFile);
