@@ -3,6 +3,8 @@ package com.example.copier;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -240,6 +242,114 @@ public class SmartJavaCopier {
         return projectDir;
     }
 
+    // New method to check if a project is multi-module
+    private static boolean isMultiModuleProject(Path projectRoot) {
+        // Check for Maven
+        Path pomPath = projectRoot.resolve("pom.xml");
+        if (Files.exists(pomPath)) {
+            try {
+                String content = new String(Files.readAllBytes(pomPath));
+                if (content.contains("<modules>")) {
+                    return true;
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        
+        // Check for Gradle
+        Path settingsGradlePath = projectRoot.resolve("settings.gradle");
+        if (Files.exists(settingsGradlePath)) {
+            try {
+                String content = new String(Files.readAllBytes(settingsGradlePath));
+                if (content.contains("include")) {
+                    return true;
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        
+        Path settingsGradleKtsPath = projectRoot.resolve("settings.gradle.kts");
+        if (Files.exists(settingsGradleKtsPath)) {
+            try {
+                String content = new String(Files.readAllBytes(settingsGradleKtsPath));
+                if (content.contains("include")) {
+                    return true;
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        
+        return false;
+    }
+
+    // New method to get submodules of a multi-module project
+    private static List<Path> getSubmodules(Path projectRoot) {
+        List<Path> submodules = new ArrayList<>();
+        // For Maven
+        Path pomPath = projectRoot.resolve("pom.xml");
+        if (Files.exists(pomPath)) {
+            try {
+                String content = new String(Files.readAllBytes(pomPath));
+                // Simple extraction: look for <module> tags
+                Pattern pattern = Pattern.compile("<module>(.*?)</module>");
+                Matcher matcher = pattern.matcher(content);
+                while (matcher.find()) {
+                    String moduleName = matcher.group(1).trim();
+                    Path modulePath = projectRoot.resolve(moduleName);
+                    if (Files.exists(modulePath) && Files.isDirectory(modulePath)) {
+                        submodules.add(modulePath);
+                    }
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        
+        // For Gradle
+        Path settingsGradlePath = projectRoot.resolve("settings.gradle");
+        if (Files.exists(settingsGradlePath)) {
+            try {
+                String content = new String(Files.readAllBytes(settingsGradlePath));
+                // Extract included modules, e.g., include 'service1', 'service2'
+                Pattern pattern = Pattern.compile("include\\s+['\"]([^'\"]+)['\"]");
+                Matcher matcher = pattern.matcher(content);
+                while (matcher.find()) {
+                    String moduleName = matcher.group(1).trim();
+                    Path modulePath = projectRoot.resolve(moduleName);
+                    if (Files.exists(modulePath) && Files.isDirectory(modulePath)) {
+                        submodules.add(modulePath);
+                    }
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        
+        Path settingsGradleKtsPath = projectRoot.resolve("settings.gradle.kts");
+        if (Files.exists(settingsGradleKtsPath)) {
+            try {
+                String content = new String(Files.readAllBytes(settingsGradleKtsPath));
+                // For Kotlin DSL, include("service1") or include("service1", "service2")
+                Pattern pattern = Pattern.compile("include\\s*\\(?\\s*[\"']([^\"']+)[\"']");
+                Matcher matcher = pattern.matcher(content);
+                while (matcher.find()) {
+                    String moduleName = matcher.group(1).trim();
+                    Path modulePath = projectRoot.resolve(moduleName);
+                    if (Files.exists(modulePath) && Files.isDirectory(modulePath)) {
+                        submodules.add(modulePath);
+                    }
+                }
+            } catch (IOException e) {
+                // ignore
+            }
+        }
+        
+        return submodules;
+    }
+
     private static void copyJavaFiles(String projectName, Path projectRoot, Path sourceDir, Path destDir) {
         clearConsole();
         System.out.println("[Info] Flattening and copying Java project files...");
@@ -310,36 +420,57 @@ public class SmartJavaCopier {
 
             System.out.println("[Operation] Collecting and copying .java files and configuration files...");
             
-            // Copy Java files
-            try (Stream<Path> walk = Files.walk(sourceDir)) {
-                walk.filter(path -> path.toString().endsWith(".java") && Files.isRegularFile(path))
-                    .forEach(sourceFile -> {
-                        fileCount[0]++;
-                        String fileName = sourceFile.getFileName().toString();
-                        Path destFile = finalDestDir[0].resolve(fileName);
+            // Check if multi-module project
+            boolean isMultiModule = isMultiModuleProject(projectRoot);
+            if (isMultiModule) {
+                System.out.println("[Info] Multi-module project detected. Copying all submodules.");
+                List<Path> submodules = getSubmodules(projectRoot);
+                if (submodules.isEmpty()) {
+                    System.out.println("[Warning] No submodules found for multi-module project.");
+                } else {
+                    for (Path submodule : submodules) {
+                        String submoduleName = submodule.getFileName().toString();
+                        System.out.println("[Info] Copying submodule: " + submoduleName);
+                        Path subDestDir = finalDestDir[0].resolve(submoduleName);
+                        // Recursively call copyJavaFiles for the submodule
+                        copyJavaFiles(submoduleName, submodule, determineSourcePath(submodule), subDestDir);
+                    }
+                }
+                System.out.println("[Info] Skipping Java files copy for multi-module parent directory.");
+            } else {
+                // Copy Java files only if not multi-module
+                try (Stream<Path> walk = Files.walk(sourceDir)) {
+                    walk.filter(path -> path.toString().endsWith(".java") && Files.isRegularFile(path))
+                        .forEach(sourceFile -> {
+                            fileCount[0]++;
+                            String fileName = sourceFile.getFileName().toString();
+                            Path destFile = finalDestDir[0].resolve(fileName);
 
-                        if (Files.exists(destFile)) {
-                            conflictCount[0]++;
-                            int counter = 1;
-                            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
-                            String extension = fileName.substring(fileName.lastIndexOf('.'));
-                            Path newDestFile;
-                            String newName;
-                            do {
-                                newName = String.format("%s_%d%s", baseName, counter++, extension);
-                                newDestFile = finalDestDir[0].resolve(newName);
-                            } while (Files.exists(newDestFile));
-                            
-                            System.out.println("  [Rename] " + fileName + " -> " + newName);
-                            copyFile(sourceFile, newDestFile);
-                        } else {
-                            System.out.println("  [Copy] " + fileName);
-                            copyFile(sourceFile, destFile);
-                        }
-                    });
+                            if (Files.exists(destFile)) {
+                                conflictCount[0]++;
+                                int counter = 1;
+                                String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                String extension = fileName.substring(fileName.lastIndexOf('.'));
+                                Path newDestFile;
+                                String newName;
+                                do {
+                                    newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                    newDestFile = finalDestDir[0].resolve(newName);
+                                } while (Files.exists(newDestFile));
+                                
+                                System.out.println("  [Rename] " + fileName + " -> " + newName);
+                                copyFile(sourceFile, newDestFile);
+                            } else {
+                                System.out.println("  [Copy] " + fileName);
+                                copyFile(sourceFile, destFile);
+                            }
+                        });
+                } catch (IOException e) {
+                    System.err.println("[Warning] Error walking source directory: " + e.getMessage());
+                }
             }
             
-            // Copy additional configuration files from project root
+            // Copy additional configuration files from project root (for both multi-module and single module)
             for (String fileName : ADDITIONAL_FILES_TO_COPY) {
                 Path sourceFile = projectRoot.resolve(fileName);
                 if (Files.exists(sourceFile) && Files.isRegularFile(sourceFile)) {
