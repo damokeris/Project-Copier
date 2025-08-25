@@ -423,22 +423,123 @@ public class SmartJavaCopier {
             // Check if multi-module project
             boolean isMultiModule = isMultiModuleProject(projectRoot);
             if (isMultiModule) {
-                System.out.println("[Info] Multi-module project detected. Copying all submodules.");
+                System.out.println("[Info] Multi-module project detected. Copying all submodules to the same directory.");
                 List<Path> submodules = getSubmodules(projectRoot);
                 if (submodules.isEmpty()) {
                     System.out.println("[Warning] No submodules found for multi-module project.");
                 } else {
+                    // Copy all submodules to the same target directory
                     for (Path submodule : submodules) {
                         String submoduleName = submodule.getFileName().toString();
                         System.out.println("[Info] Copying submodule: " + submoduleName);
-                        Path subDestDir = finalDestDir[0].resolve(submoduleName);
-                        // Recursively call copyJavaFiles for the submodule
-                        copyJavaFiles(submoduleName, submodule, determineSourcePath(submodule), subDestDir);
+                        Path subSourceDir = determineSourcePath(submodule);
+                        
+                        // Copy Java files from submodule
+                        try (Stream<Path> walk = Files.walk(subSourceDir)) {
+                            walk.filter(path -> path.toString().endsWith(".java") && Files.isRegularFile(path))
+                                .forEach(sourceFile -> {
+                                    fileCount[0]++;
+                                    String fileName = sourceFile.getFileName().toString();
+                                    Path destFile = finalDestDir[0].resolve(fileName);
+
+                                    if (Files.exists(destFile)) {
+                                        conflictCount[0]++;
+                                        int counter = 1;
+                                        String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                        String extension = fileName.substring(fileName.lastIndexOf('.'));
+                                        Path newDestFile;
+                                        String newName;
+                                        do {
+                                            newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                            newDestFile = finalDestDir[0].resolve(newName);
+                                        } while (Files.exists(newDestFile));
+                                        
+                                        System.out.println("  [Rename] " + fileName + " -> " + newName);
+                                        copyFile(sourceFile, newDestFile);
+                                    } else {
+                                        System.out.println("  [Copy] " + fileName);
+                                        copyFile(sourceFile, destFile);
+                                    }
+                                });
+                        } catch (IOException e) {
+                            System.err.println("[Warning] Error walking submodule source directory: " + e.getMessage());
+                        }
+                        
+                        // Copy configuration files from submodule
+                        for (String fileName : ADDITIONAL_FILES_TO_COPY) {
+                            Path sourceFile = submodule.resolve(fileName);
+                            if (Files.exists(sourceFile) && Files.isRegularFile(sourceFile)) {
+                                fileCount[0]++;
+                                Path destFile = finalDestDir[0].resolve(fileName);
+                                
+                                if (Files.exists(destFile)) {
+                                    conflictCount[0]++;
+                                    int counter = 1;
+                                    String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                    String extension = fileName.substring(fileName.lastIndexOf('.'));
+                                    Path newDestFile;
+                                    String newName;
+                                    do {
+                                        newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                        newDestFile = finalDestDir[0].resolve(newName);
+                                    } while (Files.exists(newDestFile));
+                                    
+                                    System.out.println("  [Rename Config] " + fileName + " -> " + newName);
+                                    copyFile(sourceFile, newDestFile);
+                                } else {
+                                    System.out.println("  [Copy Config] " + fileName);
+                                    copyFile(sourceFile, destFile);
+                                }
+                            }
+                        }
+                        
+                        // Copy configuration files from submodule resources directories
+                        List<Path> resourcesDirs = Arrays.asList(
+                            submodule.resolve("src").resolve("main").resolve("resources"),
+                            submodule.resolve("src").resolve("test").resolve("resources")
+                        );
+                        
+                        for (Path resourcesDir : resourcesDirs) {
+                            if (Files.exists(resourcesDir) && Files.isDirectory(resourcesDir)) {
+                                try (Stream<Path> walk = Files.walk(resourcesDir)) {
+                                    walk.filter(path -> {
+                                        String fileName = path.getFileName().toString();
+                                        return ADDITIONAL_FILES_TO_COPY.contains(fileName) && Files.isRegularFile(path);
+                                    }).forEach(sourceFile -> {
+                                        fileCount[0]++;
+                                        String fileName = sourceFile.getFileName().toString();
+                                        Path destFile = finalDestDir[0].resolve(fileName);
+                                        
+                                        if (Files.exists(destFile)) {
+                                            conflictCount[0]++;
+                                            int counter = 1;
+                                            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+                                            String extension = fileName.substring(fileName.lastIndexOf('.'));
+                                            Path newDestFile;
+                                            String newName;
+                                            do {
+                                                newName = String.format("%s_%d%s", baseName, counter++, extension);
+                                                newDestFile = finalDestDir[0].resolve(newName);
+                                            } while (Files.exists(newDestFile));
+                                            
+                                            System.out.println("  [Rename Resource] " + fileName + " -> " + newName);
+                                            copyFile(sourceFile, newDestFile);
+                                        } else {
+                                            System.out.println("  [Copy Resource] " + fileName);
+                                            copyFile(sourceFile, destFile);
+                                        }
+                                    });
+                                } catch (IOException e) {
+                                    System.err.println("[Warning] Error accessing submodule resources directory: " + resourcesDir);
+                                }
+                            }
+                        }
                     }
                 }
-                System.out.println("[Info] Skipping Java files copy for multi-module parent directory.");
-            } else {
-                // Copy Java files only if not multi-module
+            }
+            
+            // Copy Java files from the main project (if not multi-module or if multi-module but also has its own code)
+            if (!isMultiModule) {
                 try (Stream<Path> walk = Files.walk(sourceDir)) {
                     walk.filter(path -> path.toString().endsWith(".java") && Files.isRegularFile(path))
                         .forEach(sourceFile -> {
